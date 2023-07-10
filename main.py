@@ -2,6 +2,8 @@ import findspark
 from pyspark.sql import SparkSession
 from pyspark.sql.functions import year, current_date, col, avg
 import numpy as np
+from pyspark.ml.regression import LinearRegression
+from pyspark.ml.evaluation import RegressionEvaluator
 
 def loadjson():
     # Initialize Spark
@@ -65,86 +67,81 @@ def loadTextFile(file_path):
     return spark, df
 
 
-def splitData(apts):
+def splitData(apts, train_ratio):
     # Split the data into features and target
-    X = apts[:,:-1]
-    y = apts[:-1]
+    X = apts[:, :-1]
+    y = apts[:, -1]
 
-    # Split the data to 75& train and 25% test
-    train_size = int(0.75 * len(apts))
-    X_train, X_test = X[:train_size], X[train_size:]
-    y_train, y_test = y[:train_size], y[train_size:]
+    # Get the number of samples in the dataset
+    num_samples = X.shape[0]
 
-    return X_train, X_test, y_train, y_test
+    # Randomly shuffle the indices
+    indices = np.random.permutation(num_samples)
+
+    # Calculate the number of samples for training and testing
+    num_train_samples = int(train_ratio * num_samples)
+    num_test_samples = num_samples - num_train_samples
+
+    # Split the data into training and testing sets
+    X_train = X[indices[:num_train_samples]]
+    y_train = y[indices[:num_train_samples]]
+    X_test = X[indices[num_train_samples:]]
+    y_test = y[indices[num_train_samples:]]
+    print("The data split")
+    return X_train, y_train, X_test, y_test
 
 
-def predictPrices(x_train, x_test, y_train,y_test):
-    # Calculate the regression coefficients using the normal equation
-    coefficients = np.linalg.inv(x_train.T @ x_train) @ x_train.T @ y_train
+def linearRegression(X, y, num_iterations=100, learning_rate=0.01):
+    # Add a column of ones to the feature matrix for the bias term
+    X = np.concatenate((np.ones((X.shape[0], 1)), X), axis=1)
 
-    # Predict the target variable for the test set
-    y_pred = x_test @ coefficients
+    # Initialize the weights
+    num_features = X.shape[1]
+    weights = np.zeros(num_features)
+
+    # Perform gradient descent
+    for iteration in range(num_iterations):
+        # Calculate the predicted values
+        y_pred = np.dot(X, weights)
+
+        # Calculate the error
+        error = y_pred - y
+
+        # Update the weights
+        gradient = np.dot(X.T, error)
+        weights -= learning_rate * gradient
+
+    return weights
+
+
+def evaluateModel(X_test, y_test, weights):
+    # Add a column of ones to the feature matrix for the bias term
+    X_test = np.concatenate((np.ones((X_test.shape[0], 1)), X_test), axis=1)
+
+    # Calculate the predicted values
+    y_pred = np.dot(X_test, weights)
 
     # Calculate the mean squared error
     mse = np.mean((y_pred - y_test) ** 2)
-    # Print the mean squared error
-    print("Mean Squared Error:", mse)
 
-class LinearRegression:
-    def __init__(self):
-        self.weights = None
-        self.bias = None
-
-    def fit(self, X, y):
-        # Add bias term to X
-        X = np.insert(X, 0, 1, axis=1)
-
-        # Compute the weights using the normal equation
-        self.weights = np.linalg.inv(X.T @ X) @ X.T @ y
-
-        # Extract the bias term
-        self.bias = self.weights[0]
-        self.weights = self.weights[1:]
-
-    def predict(self, X):
-        # Add bias term to X
-        X = np.insert(X, 0, 1, axis=1)
-
-        # Predict the target variable
-        y_pred = X @ np.concatenate(([self.bias], self.weights))
-
-        return y_pred
+    return mse
 
 
 if __name__ == '__main__':
     # --- Part A ---
-    # spark, books = loadjson()
-    # F_authors(books)
-    # english_pages_amount(books)
-    # spark.stop()
+    spark, books = loadjson()
+    F_authors(books)
+    english_pages_amount(books)
+    spark.stop()
 
     # ---Part B---
     spark, apts = loadTextFile('prices.txt')
     print(apts.printSchema())
-    # print("ok")
-    x_train, x_test, y_train,y_test = splitData(apts)
-    # print("ok")
-    # predictPrices(x_train, x_test, y_train,y_test)
-    # spark.stop()
-    # Create an instance of the linear regression model
+    x_train, y_train, x_test, y_test = splitData(apts, 0.75)
+    weights = linearRegression(x_train, y_train)
+    mse = evaluateModel(x_test, y_test, weights)
+    print("Mean Squared Error:", mse)
+    spark.stop()
 
-    model = LinearRegression()
-
-    # Train the model
-    model.fit(x_train, y_train)
-
-    # Predict on the test set
-    y_pred = model.predict(x_test)
-
-    # Calculate mean squared error (MSE)
-    mse = np.mean((y_test - y_pred) ** 2)
-
-    # Print the MSE
-    print("Mean Squared Error (MSE):", mse)
 
 

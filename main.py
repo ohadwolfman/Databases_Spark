@@ -1,9 +1,7 @@
 import findspark
 from pyspark.sql import SparkSession
-from pyspark.sql.functions import year, current_date, col, avg
+from pyspark.sql.functions import year, current_date, avg
 import numpy as np
-from pyspark.ml.regression import LinearRegression
-from pyspark.ml.evaluation import RegressionEvaluator
 
 def loadjson():
     # Initialize Spark
@@ -67,35 +65,6 @@ def loadTextFile(file_path):
     return spark, df
 
 
-# def splitData(apts, train_ratio):
-#     # Split the data into features and target
-#     train_rows = apts.select().orderBy()
-#     X = apts.select(['loaclPrices', 'bathrooms', 'totalArea', 'residentialArea', 'garages', 'rooms',
-#                     'bedrooms', 'age', 'buildingType', 'architectureType', 'firefightingSite'])
-#     y = apts.select('price')
-#
-#     # Get the number of samples in the dataset
-#     num_samples = apts.count()
-#     print("num_samples:", num_samples)
-#
-#     # Calculate the number of samples for training and testing
-#     num_train_samples = int(train_ratio * num_samples)
-#
-#     # Split the data into training and testing sets
-#     # Function to get rows at specific places
-#     def getrows(df, start, end):
-#         return df.rdd.zipWithIndex().filter(lambda x: x[1] in range(start, end).map(lambda x: x[0]))
-#
-#     x_collection = X.rdd.zipWithIndex().collect()
-#     y_collection = y.rdd.zipWithIndex().collect()
-#     X_train =
-#     X_test = getrows(X, start=num_train_samples+1, end=num_samples)
-#     y_train = getrows(y, start=0, end=num_train_samples)
-#     y_test = getrows(y, start=num_train_samples+1, end=num_samples)
-#     print("The data split")
-#     print(x_train)
-#     return X_train, y_train, X_test, y_test
-
 def splitData(df, trainRatio):
     # Split the DataFrame into train and test sets
     train_data, test_data = df.randomSplit([trainRatio, 1 - trainRatio], seed=42)
@@ -110,38 +79,37 @@ def splitData(df, trainRatio):
     # Return the train and test sets
     return x_train, x_test, y_train, y_test
 
-def linearRegression(train_data, labels):
-    # Convert the Spark DataFrames to NumPy arrays
-    features = np.array(train_data.toPandas())
-    labels = np.array(labels.toPandas())
+def linearRegression(data_x, data_y):
+    data_x = np.array(data_x.toPandas())
+    data_y = np.array(data_y.toPandas())
+    w = np.array(np.zeros((11,1)))
+    b = np.array(np.zeros((19,1)))
+    alpha = 0.001
 
-    # Initialize the weights and bias
-    weights = np.zeros(features.shape[1])
-    bias = 0
+    print("data_x:", data_x.shape, "data_y", data_y.shape, "w", w.shape, "b", b.shape)
+    for iteration in range(100000):
+        deriv_b = np.mean((np.dot(data_x, w)+b) - data_y)
+        gradient_w = 1.0/len(data_y) * np.dot(((np.dot(data_x, w)+b) - data_y).T, data_x).T
+        b -= alpha * deriv_b
+        w -= alpha * gradient_w
 
-    # Calculate the gradients
-    gradients = np.dot(features.T, (labels - np.dot(features, weights) - bias))
+        if iteration % 10000 == 0:
+            print("W and b is: ", w, b[0])
+    return w, b
 
-    # Reshape the gradients
-    gradients = gradients.reshape(-1, 1)
-
-    # Update the weights and bias
-    weights = weights - gradients
-    bias = bias - gradients.sum()
-
-    # Return the weights and bias
-    return weights, bias
 
 def evaluateModel(X_test, y_test, weights, bias):
     # Convert the Spark DataFrames to NumPy arrays
     features = np.array(X_test.toPandas())
     labels = np.array(y_test.toPandas())
+    bias = bias[:9]
+    print("features:", features.shape, "labels", labels.shape, "weights", weights.shape, "bias", bias.shape)
 
     # Calculate the predicted labels
-    predicted_labels = np.dot(features, weights.T) + bias
+    predicted_labels = np.dot(features, weights) + bias
 
     # Calculate the MSE score
-    mse = np.mean((predicted_labels - labels)**2)
+    mse = np.mean((predicted_labels - labels)**2)/2
 
     # Return the MSE score
     return mse

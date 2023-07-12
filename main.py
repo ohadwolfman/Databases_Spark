@@ -102,68 +102,69 @@ def splitData(df, trainRatio):
 
     x_train = train_data.select(['loaclPrices', 'bathrooms', 'totalArea', 'residentialArea', 'garages',
                     'rooms', 'bedrooms', 'age', 'buildingType', 'architectureType', 'firefightingSite'])
-    x_test = train_data.select('price')
-    y_train = test_data.select(['loaclPrices', 'bathrooms', 'totalArea', 'residentialArea', 'garages',
+    y_train = train_data.select('price')
+    x_test = test_data.select(['loaclPrices', 'bathrooms', 'totalArea', 'residentialArea', 'garages',
                     'rooms', 'bedrooms', 'age', 'buildingType', 'architectureType', 'firefightingSite'])
     y_test = test_data.select('price')
 
     # Return the train and test sets
     return x_train, x_test, y_train, y_test
 
-def linearRegression(X, y, num_iterations=100, learning_rate=0.01):
-    # Add a column of ones to the feature matrix for the bias term
-    X = np.concatenate((np.ones((X.shape[0], 1)), X), axis=1)
+def linearRegression(train_data, labels):
+    # Convert the Spark DataFrames to NumPy arrays
+    features = np.array(train_data.toPandas())
+    labels = np.array(labels.toPandas())
 
-    # Initialize the weights
-    num_features = len(apts.columns)
-    weights = np.zeros(num_features)
+    # Initialize the weights and bias
+    weights = np.zeros(features.shape[1])
+    bias = 0
 
-    # Perform gradient descent
-    for iteration in range(num_iterations):
-        # Calculate the predicted values
-        y_pred = np.dot(X, weights)
+    # Calculate the gradients
+    gradients = np.dot(features.T, (labels - np.dot(features, weights) - bias))
 
-        # Calculate the error
-        error = y_pred - y
+    # Reshape the gradients
+    gradients = gradients.reshape(-1, 1)
 
-        # Update the weights
-        gradient = np.dot(X.T, error)
-        weights -= learning_rate * gradient
+    # Update the weights and bias
+    weights = weights - gradients
+    bias = bias - gradients.sum()
 
-    return weights
+    # Return the weights and bias
+    return weights, bias
 
+def evaluateModel(X_test, y_test, weights, bias):
+    # Convert the Spark DataFrames to NumPy arrays
+    features = np.array(X_test.toPandas())
+    labels = np.array(y_test.toPandas())
 
-def evaluateModel(X_test, y_test, weights):
-    # Add a column of ones to the feature matrix for the bias term
-    X_test = np.concatenate((np.ones((X_test.shape[0], 1)), X_test), axis=1)
+    # Calculate the predicted labels
+    predicted_labels = np.dot(features, weights.T) + bias
 
-    # Calculate the predicted values
-    y_pred = np.dot(X_test, weights)
+    # Calculate the MSE score
+    mse = np.mean((predicted_labels - labels)**2)
 
-    # Calculate the mean squared error
-    mse = np.mean((y_pred - y_test) ** 2)
-
+    # Return the MSE score
     return mse
 
 
 if __name__ == '__main__':
     # --- Part A ---
-    # spark, books = loadjson()
-    # F_authors(books)
-    # english_pages_amount(books)
-    # spark.stop()
+    spark, books = loadjson()
+    F_authors(books)
+    english_pages_amount(books)
+    spark.stop()
 
     # ---Part B---
     spark, apts = loadTextFile('prices.txt')
     print(apts.printSchema())
     x_train, x_test, y_train, y_test = splitData(apts, 0.75)
     x_train.show()
-    x_test.show()
     y_train.show()
+    x_test.show()
     y_test.show()
 
-    weights = linearRegression(x_train, y_train)
-    mse = evaluateModel(x_test, y_test, weights)
+    weights, bias = linearRegression(x_train, y_train)
+    mse = evaluateModel(x_test, y_test, weights, bias)
     print("Mean Squared Error:", mse)
     spark.stop()
 

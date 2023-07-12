@@ -67,36 +67,55 @@ def loadTextFile(file_path):
     return spark, df
 
 
-def splitData(apts, train_ratio):
-    # Split the data into features and target
-    X = apts[:, :-1]
-    y = apts[:, -1]
+# def splitData(apts, train_ratio):
+#     # Split the data into features and target
+#     train_rows = apts.select().orderBy()
+#     X = apts.select(['loaclPrices', 'bathrooms', 'totalArea', 'residentialArea', 'garages', 'rooms',
+#                     'bedrooms', 'age', 'buildingType', 'architectureType', 'firefightingSite'])
+#     y = apts.select('price')
+#
+#     # Get the number of samples in the dataset
+#     num_samples = apts.count()
+#     print("num_samples:", num_samples)
+#
+#     # Calculate the number of samples for training and testing
+#     num_train_samples = int(train_ratio * num_samples)
+#
+#     # Split the data into training and testing sets
+#     # Function to get rows at specific places
+#     def getrows(df, start, end):
+#         return df.rdd.zipWithIndex().filter(lambda x: x[1] in range(start, end).map(lambda x: x[0]))
+#
+#     x_collection = X.rdd.zipWithIndex().collect()
+#     y_collection = y.rdd.zipWithIndex().collect()
+#     X_train =
+#     X_test = getrows(X, start=num_train_samples+1, end=num_samples)
+#     y_train = getrows(y, start=0, end=num_train_samples)
+#     y_test = getrows(y, start=num_train_samples+1, end=num_samples)
+#     print("The data split")
+#     print(x_train)
+#     return X_train, y_train, X_test, y_test
 
-    # Get the number of samples in the dataset
-    num_samples = X.shape[0]
+def splitData(df, trainRatio):
+    # Split the DataFrame into train and test sets
+    train_data, test_data = df.randomSplit([trainRatio, 1 - trainRatio], seed=42)
 
-    # Randomly shuffle the indices
-    indices = np.random.permutation(num_samples)
+    x_train = train_data.select(['loaclPrices', 'bathrooms', 'totalArea', 'residentialArea', 'garages',
+                    'rooms', 'bedrooms', 'age', 'buildingType', 'architectureType', 'firefightingSite'])
+    x_test = train_data.select('price')
+    y_train = test_data.select(['loaclPrices', 'bathrooms', 'totalArea', 'residentialArea', 'garages',
+                    'rooms', 'bedrooms', 'age', 'buildingType', 'architectureType', 'firefightingSite'])
+    y_test = test_data.select('price')
 
-    # Calculate the number of samples for training and testing
-    num_train_samples = int(train_ratio * num_samples)
-    num_test_samples = num_samples - num_train_samples
-
-    # Split the data into training and testing sets
-    X_train = X[indices[:num_train_samples]]
-    y_train = y[indices[:num_train_samples]]
-    X_test = X[indices[num_train_samples:]]
-    y_test = y[indices[num_train_samples:]]
-    print("The data split")
-    return X_train, y_train, X_test, y_test
-
+    # Return the train and test sets
+    return x_train, x_test, y_train, y_test
 
 def linearRegression(X, y, num_iterations=100, learning_rate=0.01):
     # Add a column of ones to the feature matrix for the bias term
     X = np.concatenate((np.ones((X.shape[0], 1)), X), axis=1)
 
     # Initialize the weights
-    num_features = X.shape[1]
+    num_features = len(apts.columns)
     weights = np.zeros(num_features)
 
     # Perform gradient descent
@@ -129,15 +148,20 @@ def evaluateModel(X_test, y_test, weights):
 
 if __name__ == '__main__':
     # --- Part A ---
-    spark, books = loadjson()
-    F_authors(books)
-    english_pages_amount(books)
-    spark.stop()
+    # spark, books = loadjson()
+    # F_authors(books)
+    # english_pages_amount(books)
+    # spark.stop()
 
     # ---Part B---
     spark, apts = loadTextFile('prices.txt')
     print(apts.printSchema())
-    x_train, y_train, x_test, y_test = splitData(apts, 0.75)
+    x_train, x_test, y_train, y_test = splitData(apts, 0.75)
+    x_train.show()
+    x_test.show()
+    y_train.show()
+    y_test.show()
+
     weights = linearRegression(x_train, y_train)
     mse = evaluateModel(x_test, y_test, weights)
     print("Mean Squared Error:", mse)
